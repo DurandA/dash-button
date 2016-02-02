@@ -1,10 +1,63 @@
+function init_mqtt ()
+  -- init mqtt client with keepalive timer 120sec
+  m = mqtt.Client("NodeMCU", 120, "lfrajpey", "0g0WElp_rPjj")
+
+  -- setup Last Will and Testament (optional)
+  -- Broker will publish a message with:
+  -- qos = 0, retain = 0, data = "offline"
+  -- to topic "/lwt" if client don't send keepalive packet
+  m:lwt("/lwt", "offline", 0, 0)
+
+  m:on("connect", function(con) print ("connected") end)
+  m:on("offline", function(con) print ("offline") end)
+
+  -- on publish message receive event
+  m:on("message", function(conn, topic, data)
+    print(topic .. ":" )
+    if data ~= nil then
+      print(data)
+    end
+  end)
+
+  -- for secure: m:connect("192.168.11.118", 1880, 1)
+  m:connect("m20.cloudmqtt.com", 12267, 0, function(conn)
+      print("connected")
+  end)
+
+  tmr.delay(1000000)
+
+  -- publish a message with data = hello, QoS = 0, retain = 0
+  m:publish("/topic","hello",0,0, function(conn)
+      print("sent")
+  end)
+
+  m:close();
+  -- you can call m:connect againend
+  return m
+end
+
+function isr ()
+  print("ESP8266 AP IP now is: " .. wifi.ap.getip())
+
+  -- print("ESP8266 STATION IP now is: " .. wifi.sta.getip())
+
+  -- now the module is configured and connected to the network so lets start setting things up for the control logic
+  gpio.mode(8,gpio.OUTPUT)
+  gpio.mode(9,gpio.OUTPUT)
+
+  tmr.delay(10)
+  gpio.write(8,gpio.HIGH)
+  tmr.delay(10)
+  gpio.write(8,gpio.LOW)
+end
+
 print("WIFI control")
 -- put module in AP mode
 wifi.setmode(wifi.SOFTAP)
 print("ESP8266 mode is: " .. wifi.getmode())
 cfg={}
 -- Set the SSID of the module in AP mode and access password
-cfg.ssid="TUT_button"
+cfg.ssid="NodeMCU"
 cfg.pwd="admin1234"
 
 if cfg.ssid and cfg.pwd then
@@ -42,17 +95,9 @@ sv:listen(80,function(c)
             -- configure the module wso it can connect to the network using the received SSID and password
             wifi.sta.config(ssid,password)
             print("Setting up ESP8266 for station mode...Please wait.")
-            tmr.delay(10000000)
-            print("ESP8266 STATION IP now is: " .. wifi.sta.getip())
-            print("ESP8266 AP IP now is: " .. wifi.ap.getip())
-            -- now the module is configured and connected to the network so lets start setting things up for the control logic
-            gpio.mode(8,gpio.OUTPUT)
-            gpio.mode(9,gpio.OUTPUT)
+            tmr.alarm(1,1000, 1, function() if wifi.sta.getip()==nil then print(" Wait to IP address!") else print("New IP address is "..wifi.sta.getip()) init_mqtt() isr() tmr.stop(1) end end)
+            -- tmr.delay(20000000)
 
-            tmr.delay(10)
-            gpio.write(8,gpio.HIGH)
-            tmr.delay(10)
-            gpio.write(8,gpio.LOW)
             -- sv=net.createServer(net.TCP, 30)
             -- sv:listen(9999,function(c)
             --   c:on("receive", function(c, pl)
@@ -82,6 +127,7 @@ sv:listen(80,function(c)
         end
       end
     end
+    --c:send("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 61\r\n\r\n<!DOCTYPE html><html lang='en'><body>helloworld</body></html>")
     c:send("HTTP/1.1 200 OK\r\n")
     c:send("Content-Type: text/html\r\n")
     c:send("Content-Length: 520\r\n")
@@ -97,7 +143,7 @@ sv:listen(80,function(c)
     c:send("<h2>" .. mac_mess1 .. "</h2> ")
     c:send("<h2>" .. mac_mess2 .. "</h2> ")
     c:send("<h2>Enter SSID and Password for your WIFI router</h2> ")
-    c:send("</form> </body> </html>")
+
     c:send("<form action='' method='get'>")
     c:send("SSID:")
     c:send("<input type='text' name='SSID' value='' maxlength='100' />")
@@ -105,6 +151,7 @@ sv:listen(80,function(c)
     c:send("Password:")
     c:send("<input type='text' name='Password' value='' maxlength='100' />")
     c:send("<input type='submit' value='Submit' />")
+    c:send("</form> </body> </html>")
   end)
 end)
 file.close()
